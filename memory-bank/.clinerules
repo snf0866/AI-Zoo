@@ -1,0 +1,85 @@
+# Cline Rules
+
+## Project Intelligence
+
+This file captures important patterns, preferences, and project intelligence that help Cline work more effectively. It serves as a learning journal that evolves as Cline works with the project and user.
+
+## Memory Bank Patterns
+
+### Reading Protocol
+- MUST read ALL memory bank files at the start of EVERY task
+- Start with `projectbrief.md` and follow the hierarchy
+- Pay special attention to `activeContext.md` and `progress.md` for current state
+
+### Update Triggers
+- After implementing significant changes
+- When discovering new project patterns
+- When user requests with "update memory bank"
+- When context needs clarification
+
+### Update Process
+1. Review ALL files, even if some don't require updates
+2. Focus particularly on `activeContext.md` and `progress.md`
+3. Document current state accurately
+4. Clarify next steps
+
+## User Preferences
+
+### Documentation Style
+- Clear, concise language
+- Structured with descriptive headings
+- Use of Markdown formatting for emphasis
+- Mermaid diagrams for visual clarity
+
+### Workflow
+- Plan Mode: Read Memory Bank → Verify Context → Develop Strategy → Present Approach
+- Act Mode: Check Memory Bank → Update Documentation → Execute Task → Document Changes
+
+## Project-Specific Patterns
+
+### Memory Bank Structure
+- Core files follow established hierarchy
+- Additional context files created as needed
+- `.clinerules` captures learning and intelligence
+
+### Documentation Focus
+- Maintain comprehensive but readable documentation
+- Highlight critical information
+- Structure for efficient navigation
+- Balance detail with clarity
+
+## Known Challenges
+
+### Memory Reset Impact
+- Complete memory reset between sessions
+- Reliance on Memory Bank for all context
+- Need for comprehensive documentation
+
+### Documentation Maintenance
+- Regular updates required
+- Balance between maintenance overhead and accuracy
+- Need for consistent formatting and structure
+
+## Evolution of Decisions
+
+### Initial Setup
+- Established core file structure
+- Defined clear file purposes
+- Implemented hierarchical relationships
+
+### Future Considerations
+- Scaling with project complexity
+- Optimizing reading protocol
+- Measuring effectiveness
+- Refining based on usage
+
+## Tool Usage Patterns
+
+### Documentation Tools
+- Markdown for all files
+- Mermaid for diagrams
+- Tables for structured data
+- Emphasis for critical information
+
+### Update Workflow
+- Review → Update → Test → Refine

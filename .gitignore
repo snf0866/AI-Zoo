@@ -1,0 +1,57 @@
+# Python関連
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 仮想環境
+venv/
+ENV/
+.env
+*.env
+
+# ログファイル
+*.log
+logs/*
+!logs/.gitkeep
+
+# 設定ファイル（必要に応じてコメントアウト）
+# ai-zoo-discord-bots/config/notion_config.json
+
+# macOS関連
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# IDEの設定
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# キャッシュファイル
+.cache/
+.pytest_cache/
+
+# Docker関連
+.dockerignore
