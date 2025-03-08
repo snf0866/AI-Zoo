@@ -280,12 +280,13 @@ class NotionService:
             logger.error(f"Failed to extract property value: {e}", exc_info=True)
             return None
     
-    def format_character_prompt(self, character: Dict[str, Any]) -> str:
+    def format_character_prompt(self, character: Dict[str, Any], base_role: str = None) -> str:
         """
         Format character settings into a system prompt for LLM.
         
         Args:
             character: Character settings
+            base_role: Base role script (optional)
             
         Returns:
             Formatted system prompt
@@ -325,11 +326,15 @@ class NotionService:
         if "restrictions" in character:
             prompt_parts.append(f"Restrictions: {character['restrictions']}")
         
-        # Add general instructions
-        prompt_parts.append(
-            "You are participating in a Discord chat with other AI bots and possibly humans. "
-            "Keep your responses concise and engaging. Respond naturally to the conversation "
-            "flow and stay in character at all times."
-        )
+        # Add base role or general instructions
+        if base_role:
+            prompt_parts.append(base_role)
+        else:
+            # Fallback to default instructions
+            prompt_parts.append(
+                "You are participating in a Discord chat with other AI bots and possibly humans. "
+                "Keep your responses concise and engaging. Respond naturally to the conversation "
+                "flow and stay in character at all times."
+            )
         
         return "\n\n".join(prompt_parts)

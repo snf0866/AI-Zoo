@@ -55,6 +55,16 @@ class BaseDiscordBot(commands.Bot):
         self.max_response_delay = int(os.environ.get('MAX_RESPONSE_DELAY', '15'))
         self.max_conversation_turns = int(os.environ.get('MAX_CONVERSATION_TURNS', '10'))
         
+        # 基本ロールスクリプトのパス
+        self.base_role_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), 
+            'config', 
+            'base_role.txt'
+        )
+        
+        # 基本ロールの読み込み
+        self.base_role = self._load_base_role()
+        
         # Initialize services
         self.llm_service = LLMService()
         self.notion_service = NotionService()
@@ -72,6 +82,15 @@ class BaseDiscordBot(commands.Bot):
         
         # Register event handlers
         self.setup_events()
+    
+    def _load_base_role(self) -> str:
+        """基本ロールスクリプトを読み込む"""
+        try:
+            with open(self.base_role_path, 'r', encoding='utf-8') as f:
+                return f.read().strip()
+        except Exception as e:
+            logger.error(f"基本ロールスクリプトの読み込みに失敗: {e}")
+            return "あなたはDiscordチャットに参加するAIボットです。会話の流れに自然に応答し、常にキャラクターを維持してください。"
     
     def setup_events(self):
         """Set up Discord event handlers."""
@@ -173,14 +192,19 @@ class BaseDiscordBot(commands.Bot):
                     "model": "gpt-4"
                 }
             
-            # Format character settings into system prompt
-            self.system_prompt = self.notion_service.format_character_prompt(self.character)
+            # Format character settings into system prompt with base role
+            self.system_prompt = self.notion_service.format_character_prompt(
+                self.character,
+                base_role=self.base_role
+            )
+            
             actual_name = self.character.get("name", self.notion_character_name)
             logger.info(f"Character settings loaded successfully:")
             logger.info(f"- Discord display name: {self.character_name}")
             logger.info(f"- Notion character name: {self.notion_character_name}")
             logger.info(f"- Actual name from Notion: {actual_name}")
             logger.info(f"- Model: {self.character.get('model', 'unknown')}")
+            logger.info(f"- Base role loaded: {bool(self.base_role)}")
             
         except Exception as e:
             logger.error(f"Failed to load character settings: {e}")
@@ -192,7 +216,11 @@ class BaseDiscordBot(commands.Bot):
                 "language": "English",
                 "model": "gpt-4"
             }
-            self.system_prompt = f"You are {self.notion_character_name}. Be friendly and helpful."
+            # Use base role if available, otherwise use a simple default prompt
+            if self.base_role:
+                self.system_prompt = f"You are {self.notion_character_name}.\n\n{self.base_role}"
+            else:
+                self.system_prompt = f"You are {self.notion_character_name}. Be friendly and helpful."
     
     async def respond_to_message(self, message):
         """
