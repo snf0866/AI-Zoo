@@ -236,11 +236,14 @@ class BaseDiscordBot(commands.Bot):
             # Get model from character settings or default to gpt-4
             model = self.character.get("model", "gpt-4") if self.character else "gpt-4"
             
+            # 最後のメッセージの送信者に基づいて、システムプロンプトを動的に調整
+            adjusted_system_prompt = self._adjust_system_prompt_for_sender(message.author.display_name)
+            
             # Format conversation history for LLM
             if model.startswith("gpt"):
-                messages = self.conversation_manager.format_for_openai(self.system_prompt)
+                messages = self.conversation_manager.format_for_openai(adjusted_system_prompt)
             else:
-                messages = self.conversation_manager.format_for_anthropic(self.system_prompt)
+                messages = self.conversation_manager.format_for_anthropic(adjusted_system_prompt)
             
             # Simulate typing
             message_length = random.randint(50, 200)  # Estimate response length
@@ -264,6 +267,35 @@ class BaseDiscordBot(commands.Bot):
             
         except Exception as e:
             logger.error(f"Failed to respond to message: {e}")
+            
+    def _adjust_system_prompt_for_sender(self, sender_name: str) -> str:
+        """
+        送信者に基づいてシステムプロンプトを調整する
+        
+        Args:
+            sender_name: メッセージの送信者名
+            
+        Returns:
+            調整されたシステムプロンプト
+        """
+        # 基本のシステムプロンプト
+        adjusted_prompt = self.system_prompt
+        
+        # 送信者が他のボットかどうかを確認
+        bot_names = ['gpt-4o-animal', 'claude-animal', 'gpt-4o', 'claude']
+        if any(bot_name.lower() in sender_name.lower() for bot_name in bot_names):
+            # 他のボットからのメッセージに応答する場合の追加指示
+            bot_response_guidance = """
+            
+現在、あなたは他のAIボットからの質問に応答しています。以下のガイドラインに従ってください：
+1. 「ご指摘の通りですね」「おっしゃる通りです」などの同意から始めないでください
+2. 質問に直接答え、相手の発言内容を先に知っていたかのような表現は避けてください
+3. 自分の考えや意見を述べる際は、「私は〜と考えます」「私の見解では〜」などの表現を使ってください
+4. 会話の自然な流れを維持しつつ、不自然な「先読み」を避けてください
+"""
+            adjusted_prompt += bot_response_guidance
+            
+        return adjusted_prompt
     
     async def reset_cooldown_after(self, minutes: int):
         """

@@ -78,7 +78,14 @@ class ConversationManager:
         
         for msg in self.history:
             role = "assistant" if msg.get("is_self", False) else "user"
-            content = f"{msg['author']}: {msg['content']}"
+            
+            # 他のボットからのメッセージを区別するためのプレフィックスを追加
+            if not msg.get("is_self", False) and msg['author'].lower() in ['gpt-4o-animal', 'claude-animal', 'gpt-4o', 'claude']:
+                # ボットの名前リストを拡張する必要がある場合は、ここに追加
+                content = f"Bot ({msg['author']}): {msg['content']}"
+            else:
+                content = f"{msg['author']}: {msg['content']}"
+                
             messages.append({"role": role, "content": content})
             
         return messages
@@ -96,7 +103,15 @@ class ConversationManager:
         conversation = f"{system_prompt}\n\n"
         
         for msg in self.history:
-            prefix = "Assistant" if msg.get("is_self", False) else f"Human ({msg['author']})"
+            # 自分のメッセージはAssistant、他のボットのメッセージはBot (名前)、それ以外はHuman (名前)として表示
+            if msg.get("is_self", False):
+                prefix = "Assistant"
+            elif msg['author'].lower() in ['gpt-4o-animal', 'claude-animal', 'gpt-4o', 'claude']:
+                # ボットの名前リストを拡張する必要がある場合は、ここに追加
+                prefix = f"Bot ({msg['author']})"
+            else:
+                prefix = f"Human ({msg['author']})"
+            
             conversation += f"{prefix}: {msg['content']}\n\n"
             
         conversation += "Assistant: "

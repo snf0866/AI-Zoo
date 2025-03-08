@@ -2,6 +2,10 @@
 
 ## What Works
 - AI Zoo Discord Bot機能:
+  - ボット間会話の自然さ改善:
+    - `base_role.txt`に他のボットへの応答スタイルに関する具体的な指示を追加
+    - `utils/conversation.py`の会話フォーマットを改善し、他のボットからのメッセージを区別
+    - `base_bot.py`にシステムプロンプトの動的調整機能を追加
   - 基底クラスによる共通機能の共通化:
     - `base_bot.py`に共通機能を持つ基底クラス`BaseDiscordBot`を実装
     - `main_bot.py`と`secondary_bot.py`を基底クラスを継承するように修正
