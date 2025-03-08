@@ -1,0 +1,22 @@
+# AI Zoo Discord Bot Crontab
+# m h dom mon dow command
+
+# Morning greeting at 8:00 AM every day
+0 8 * * * /app/docker/entrypoint.sh scheduled_message "おはようございます！今日も素晴らしい一日になりますように。" >> /app/logs/cron.log 2>&1
+
+# Afternoon greeting at 12:30 PM every day
+30 12 * * * /app/docker/entrypoint.sh scheduled_message "こんにちは！お昼ごはんは何を食べましたか？" >> /app/logs/cron.log 2>&1
+
+# Evening greeting at 7:00 PM every day
+0 19 * * * /app/docker/entrypoint.sh scheduled_message "こんばんは！今日はどんな一日でしたか？" >> /app/logs/cron.log 2>&1
+
+# Random topic starter at 10:00 AM on weekdays
+0 10 * * 1-5 /app/docker/entrypoint.sh scheduled_message "今日のトピック: $(shuf -n 1 /app/docker/cron/topics.txt)" >> /app/logs/cron.log 2>&1
+
+# Weekend activity prompt at 10:00 AM on weekends
+0 10 * * 0,6 /app/docker/entrypoint.sh scheduled_message "週末ですね！何か楽しい予定はありますか？" >> /app/logs/cron.log 2>&1
+
+# Refresh Notion character settings every 6 hours
+0 */6 * * * python -c "from services.notion_service import NotionService; import asyncio; asyncio.run(NotionService().refresh_character_cache())" >> /app/logs/notion_refresh.log 2>&1
+
+# Empty line at the end is required for cron

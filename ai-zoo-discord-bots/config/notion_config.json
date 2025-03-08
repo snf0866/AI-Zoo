@@ -1,0 +1,15 @@
+{
+  "database_id": "${NOTION_DATABASE_ID}",
+  "character_properties": {
+    "name": "Name",
+    "personality": "Personality",
+    "speaking_style": "Speaking Style",
+    "language": "Language",
+    "restrictions": "Restrictions",
+    "background": "Background",
+    "interests": "Interests",
+    "model": "Model"
+  },
+  "refresh_interval_minutes": 60,
+  "cache_expiry_hours": 24
+}

@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  bot1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    command: main
+    env_file:
+      - ../config/.env
+    volumes:
+      - ../logs:/app/logs
+    environment:
+      - BOT_NAME=AI Zoo Bot 1
+      - DISCORD_TOKEN=${DISCORD_TOKEN_BOT1}
+      - RESPONSE_PROBABILITY=0.8
+    networks:
+      - ai-zoo-network
+
+  bot2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    command: secondary
+    env_file:
+      - ../config/.env
+    volumes:
+      - ../logs:/app/logs
+    environment:
+      - BOT_NAME=AI Zoo Bot 2
+      - DISCORD_TOKEN=${DISCORD_TOKEN_BOT2}
+      - RESPONSE_PROBABILITY=0.7
+    networks:
+      - ai-zoo-network
+
+  # You can add more bots by duplicating the above service and changing the environment variables
+  # Example:
+  # bot3:
+  #   build:
+  #     context: ..
+  #     dockerfile: docker/Dockerfile
+  #   restart: unless-stopped
+  #   command: secondary
+  #   env_file:
+  #     - ../config/.env
+  #   volumes:
+  #     - ../logs:/app/logs
+  #   environment:
+  #     - BOT_NAME=AI Zoo Bot 3
+  #     - DISCORD_TOKEN=${DISCORD_TOKEN_BOT3}
+  #     - RESPONSE_PROBABILITY=0.6
+  #   networks:
+  #     - ai-zoo-network
+
+  # Cron service for scheduled messages
+  cron:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    command: cron
+    env_file:
+      - ../config/.env
+    volumes:
+      - ../logs:/app/logs
+    networks:
+      - ai-zoo-network
+
+networks:
+  ai-zoo-network:
+    driver: bridge
