@@ -48,7 +48,8 @@ class BaseDiscordBot(commands.Bot):
         super().__init__(command_prefix=command_prefix, intents=intents)
         
         # Bot configuration
-        self.character_name = character_name
+        self.notion_character_name = character_name  # 追加: Notion上でのキャラクター名
+        self.character_name = character_name  # Discord上での表示名として使用
         self.channel_id = int(os.environ.get('CHANNEL_ID', '0'))
         self.min_response_delay = int(os.environ.get('MIN_RESPONSE_DELAY', '5'))
         self.max_response_delay = int(os.environ.get('MAX_RESPONSE_DELAY', '15'))
@@ -76,7 +77,7 @@ class BaseDiscordBot(commands.Bot):
         """Set up Discord event handlers."""
         @self.event
         async def on_ready():
-            logger.info(f"Bot {self.character_name} logged in as {self.user}")
+            logger.info(f"Bot logged in as {self.user}")
             
             # Load character settings from Notion
             await self.load_character_settings()
@@ -156,16 +157,16 @@ class BaseDiscordBot(commands.Bot):
     
     async def load_character_settings(self):
         """Load character settings from Notion."""
-        logger.info(f"Loading character settings for {self.character_name}")
+        logger.info(f"Looking up character settings for Notion character name: {self.notion_character_name}")
         
         try:
-            # Get character settings from Notion
-            self.character = await self.notion_service.get_character(self.character_name)
+            # Get character settings from Notion using the Notion character name
+            self.character = await self.notion_service.get_character(self.notion_character_name)
             
             if not self.character:
-                logger.warning(f"Character {self.character_name} not found in Notion. Using default settings.")
+                logger.warning(f"Character {self.notion_character_name} not found in Notion. Using default settings.")
                 self.character = {
-                    "name": self.character_name,
+                    "name": self.notion_character_name,
                     "personality": "Friendly and helpful",
                     "speaking_style": "Casual and conversational",
                     "language": "English",
@@ -174,19 +175,24 @@ class BaseDiscordBot(commands.Bot):
             
             # Format character settings into system prompt
             self.system_prompt = self.notion_service.format_character_prompt(self.character)
-            logger.info(f"Character settings loaded for {self.character_name}")
+            actual_name = self.character.get("name", self.notion_character_name)
+            logger.info(f"Character settings loaded successfully:")
+            logger.info(f"- Discord display name: {self.character_name}")
+            logger.info(f"- Notion character name: {self.notion_character_name}")
+            logger.info(f"- Actual name from Notion: {actual_name}")
+            logger.info(f"- Model: {self.character.get('model', 'unknown')}")
             
         except Exception as e:
             logger.error(f"Failed to load character settings: {e}")
             # Set default character settings
             self.character = {
-                "name": self.character_name,
+                "name": self.notion_character_name,
                 "personality": "Friendly and helpful",
                 "speaking_style": "Casual and conversational",
                 "language": "English",
                 "model": "gpt-4"
             }
-            self.system_prompt = f"You are {self.character_name}. Be friendly and helpful."
+            self.system_prompt = f"You are {self.notion_character_name}. Be friendly and helpful."
     
     async def respond_to_message(self, message):
         """

@@ -67,15 +67,39 @@ class NotionService:
         Returns:
             Character settings or None if not found
         """
+        logger.info(f"Getting character settings for: '{character_name}'")
+        
         # Check if we need to refresh the cache
         current_time = time.time()
         refresh_interval = self.config.get("refresh_interval_minutes", 60) * 60  # Convert to seconds
         
-        if current_time - self.last_refresh_time > refresh_interval:
+        time_since_refresh = current_time - self.last_refresh_time
+        logger.debug(f"Time since last cache refresh: {time_since_refresh:.2f} seconds (interval: {refresh_interval} seconds)")
+        
+        if time_since_refresh > refresh_interval:
+            logger.info(f"Cache expired (last refresh was {time_since_refresh:.2f} seconds ago). Refreshing character cache.")
             await self.refresh_character_cache()
+        else:
+            logger.debug("Using existing character cache")
+        
+        # Look up the character in the cache
+        character_key = character_name.lower()
+        character = self.character_cache.get(character_key)
+        
+        if character:
+            logger.info(f"Character '{character_name}' found in cache with properties: {list(character.keys())}")
+            return character
+        else:
+            # Try with transformed name (remove spaces)
+            transformed_key = character_key.replace(' ', '')
+            character = self.character_cache.get(transformed_key)
             
-        # Return character from cache if available
-        return self.character_cache.get(character_name.lower())
+            if character:
+                logger.info(f"Character '{character_name}' found in cache using transformed key '{transformed_key}'")
+                return character
+            else:
+                logger.warning(f"Character '{character_name}' not found in cache. Available characters: {list(self.character_cache.keys())}")
+                return None
     
     async def refresh_character_cache(self) -> None:
         """Refresh the character cache from Notion."""
@@ -91,18 +115,42 @@ class NotionService:
             
         try:
             characters = await self._query_notion_database()
+            logger.info(f"Retrieved {len(characters)} characters from Notion database")
             
             # Update cache
-            self.character_cache = {
-                character["name"].lower(): character
-                for character in characters
-                if "name" in character
-            }
+            old_cache_keys = set(self.character_cache.keys())
+            new_cache = {}
             
+            for character in characters:
+                if "name" in character:
+                    char_name = character["name"]
+                    # Store with both original (lowercase) and transformed (no spaces) keys
+                    key = char_name.lower()
+                    transformed_key = key.replace(' ', '')
+                    
+                    new_cache[key] = character
+                    if key != transformed_key:
+                        new_cache[transformed_key] = character
+                        logger.debug(f"Character '{char_name}' stored with keys: '{key}' and '{transformed_key}'")
+                    else:
+                        logger.debug(f"Character '{char_name}' stored with key: '{key}'")
+            
+            self.character_cache = new_cache
             self.last_refresh_time = time.time()
-            logger.info(f"Character cache refreshed with {len(self.character_cache)} characters")
+            
+            # Log cache changes
+            new_cache_keys = set(self.character_cache.keys())
+            added_keys = new_cache_keys - old_cache_keys
+            removed_keys = old_cache_keys - new_cache_keys
+            
+            if added_keys:
+                logger.info(f"Added characters to cache: {added_keys}")
+            if removed_keys:
+                logger.info(f"Removed characters from cache: {removed_keys}")
+                
+            logger.info(f"Character cache refreshed with {len(characters)} characters. Total cache entries: {len(self.character_cache)}")
         except Exception as e:
-            logger.error(f"Failed to refresh character cache: {e}")
+            logger.error(f"Failed to refresh character cache: {e}", exc_info=True)
     
     async def _query_notion_database(self) -> List[Dict[str, Any]]:
         """
@@ -111,6 +159,7 @@ class NotionService:
         Returns:
             List of character settings
         """
+        logger.info(f"Querying Notion database: {self.database_id}")
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -120,13 +169,20 @@ class NotionService:
         url = f"https://api.notion.com/v1/databases/{self.database_id}/query"
         
         async with aiohttp.ClientSession() as session:
+            logger.debug(f"Sending request to Notion API: {url}")
+            start_time = time.time()
+            
             async with session.post(url, headers=headers, json={}) as response:
+                response_time = time.time() - start_time
+                logger.debug(f"Notion API response received in {response_time:.2f} seconds with status: {response.status}")
+                
                 if response.status != 200:
                     error_text = await response.text()
                     logger.error(f"Notion API error: {error_text}")
                     raise Exception(f"Notion API error: {response.status} - {error_text}")
                 
                 result = await response.json()
+                logger.debug(f"Retrieved {len(result.get('results', []))} pages from Notion database")
                 
                 # Parse results
                 characters = []
@@ -134,7 +190,11 @@ class NotionService:
                     character = self._parse_notion_page(page)
                     if character:
                         characters.append(character)
+                        logger.debug(f"Successfully parsed character: {character.get('name', 'Unknown')}")
+                    else:
+                        logger.warning("Failed to parse a Notion page into character settings")
                 
+                logger.info(f"Successfully parsed {len(characters)} characters from Notion database")
                 return characters
     
     def _parse_notion_page(self, page: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -159,10 +219,19 @@ class NotionService:
                     prop_value = self._extract_property_value(properties[notion_prop])
                     if prop_value is not None:
                         character[char_prop] = prop_value
+                        logger.debug(f"Extracted property '{char_prop}' with value: {prop_value}")
+                    else:
+                        logger.debug(f"Property '{char_prop}' extraction returned None")
+                else:
+                    logger.debug(f"Property '{notion_prop}' not found in Notion page properties")
             
-            return character if "name" in character else None
+            if "name" in character:
+                return character
+            else:
+                logger.warning("Parsed character object is missing required 'name' property")
+                return None
         except Exception as e:
-            logger.error(f"Failed to parse Notion page: {e}")
+            logger.error(f"Failed to parse Notion page: {e}", exc_info=True)
             return None
     
     def _extract_property_value(self, property_obj: Dict[str, Any]) -> Optional[Any]:
@@ -182,14 +251,20 @@ class NotionService:
                 title_objects = property_obj.get("title", [])
                 if title_objects:
                     return title_objects[0].get("plain_text", "")
+                else:
+                    logger.debug("Empty title property")
             elif prop_type == "rich_text":
                 text_objects = property_obj.get("rich_text", [])
                 if text_objects:
                     return text_objects[0].get("plain_text", "")
+                else:
+                    logger.debug("Empty rich_text property")
             elif prop_type == "select":
                 select_obj = property_obj.get("select")
                 if select_obj:
                     return select_obj.get("name")
+                else:
+                    logger.debug("Empty select property")
             elif prop_type == "multi_select":
                 multi_select = property_obj.get("multi_select", [])
                 return [item.get("name") for item in multi_select if "name" in item]
@@ -197,10 +272,12 @@ class NotionService:
                 return property_obj.get("checkbox")
             elif prop_type == "number":
                 return property_obj.get("number")
+            else:
+                logger.debug(f"Unsupported property type: {prop_type}")
             
             return None
         except Exception as e:
-            logger.error(f"Failed to extract property value: {e}")
+            logger.error(f"Failed to extract property value: {e}", exc_info=True)
             return None
     
     def format_character_prompt(self, character: Dict[str, Any]) -> str:

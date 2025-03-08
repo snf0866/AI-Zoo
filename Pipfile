@@ -7,6 +7,8 @@ name = "pypi"
 pytest = "*"
 pytest-asyncio = "*"
 aiohttp = "*"
+dotenv = "*"
+discord = "*"
 
 [dev-packages]
 

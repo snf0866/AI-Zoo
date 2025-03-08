@@ -12,7 +12,7 @@ services:
     volumes:
       - ../logs:/app/logs
     environment:
-      - BOT_NAME=AI Zoo Bot 1
+      - BOT_NAME=GPT-4o-animal
       - DISCORD_TOKEN=${DISCORD_TOKEN_BOT1}
       - RESPONSE_PROBABILITY=0.8
     networks:
@@ -29,14 +29,14 @@ services:
     volumes:
       - ../logs:/app/logs
     environment:
-      - BOT_NAME=AI Zoo Bot 2
+      - BOT_NAME=claude-animal
       - DISCORD_TOKEN=${DISCORD_TOKEN_BOT2}
       - RESPONSE_PROBABILITY=0.7
     networks:
       - ai-zoo-network
 
-  # You can add more bots by duplicating the above service and changing the environment variables
-  # Example:
+  # 追加のボットの設定例
+  # 重要: BOT_NAMEはNotionデータベースに登録されているキャラクター名と一致させてください
   # bot3:
   #   build:
   #     context: ..
@@ -48,7 +48,7 @@ services:
   #   volumes:
   #     - ../logs:/app/logs
   #   environment:
-  #     - BOT_NAME=AI Zoo Bot 3
+  #     - BOT_NAME=new-character-name  # Notionに登録されているキャラクター名
   #     - DISCORD_TOKEN=${DISCORD_TOKEN_BOT3}
   #     - RESPONSE_PROBABILITY=0.6
   #   networks:

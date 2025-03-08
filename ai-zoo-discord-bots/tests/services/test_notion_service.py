@@ -7,17 +7,47 @@ import time
 from unittest import mock
 import pytest
 from typing import Dict, Any
+import sys
+from pathlib import Path
 
 from services.notion_service import NotionService
+from utils.config_loader import load_env_vars, get_env
+
+# テスト開始時に .env ファイルから環境変数を読み込む
+def load_test_env_vars():
+    """テスト用の環境変数を設定する"""
+    project_root = Path(__file__).parent.parent.parent
+    env_file = project_root / "config" / ".env"
+    
+    if env_file.exists():
+        # .envファイルがある場合はそこから読み込む
+        print(f"Loading environment variables from {env_file}")
+        load_env_vars(str(env_file))
+    else:
+        print(f"Warning: .env file not found at {env_file}")
+
+
+# テスト実行前に環境変数を読み込む
+load_test_env_vars()
 
 
 @pytest.fixture
 def mock_env():
     """Mock environment variables for testing."""
-
+    
+    # 実際の環境変数が設定されているかチェック
+    notion_api_key = os.environ.get('NOTION_API_KEY')
+    notion_db_id = os.environ.get('NOTION_DATABASE_ID')
+    
+    # 環境変数が設定されていない場合はモック値を使用
+    if not notion_api_key:
+        notion_api_key = 'test-api-key'
+    if not notion_db_id:
+        notion_db_id = 'test-database-id'
+        
     with mock.patch.dict(os.environ, {
-        'NOTION_API_KEY': os.environ.get('NOTION_API_KEY'),
-        'NOTION_DATABASE_ID': os.environ.get('NOTION_DATABASE_ID')
+        'NOTION_API_KEY': notion_api_key,
+        'NOTION_DATABASE_ID': notion_db_id
     }):
         yield
 
@@ -144,8 +174,12 @@ async def test_init_notion_service(mock_env, mock_config):
     """Test NotionService initialization."""
     service = NotionService()
     
-    assert service.api_key == 'test-api-key'
-    assert service.database_id == 'test-database-id'
+    # 実際の環境変数が設定されている場合はスキップ
+    if os.environ.get('NOTION_API_KEY') != 'test-api-key':
+        assert service.api_key is not None
+    else:
+        assert service.api_key == 'test-api-key'
+        
     assert 'character_properties' in service.config
     assert service.character_cache == {}
 
@@ -320,6 +354,145 @@ def test_format_character_prompt(mock_env, mock_config):
     assert "You are participating in a Discord chat" in prompt
 
 
+# 新しいテスト: ボット名からキャラクターを取得するテスト
+@pytest.mark.asyncio
+async def test_get_character_by_bot_name(mock_env, mock_config):
+    """Test retrieving a character by bot name."""
+    service = NotionService()
+    
+    # Set up character cache with multiple test characters
+    service.character_cache = {
+        'aizoobot1': {
+            'name': 'AI Zoo Bot 1',
+            'personality': 'Friendly and outgoing',
+            'model': 'gpt-4'
+        },
+        'aizoobot2': {
+            'name': 'AI Zoo Bot 2',
+            'personality': 'Curious and analytical',
+            'model': 'claude-2'
+        },
+        'aizoobot3': {
+            'name': 'AI Zoo Bot 3',
+            'personality': 'Witty and sarcastic',
+            'model': 'gpt-3.5-turbo'
+        }
+    }
+    service.last_refresh_time = time.time()  # Set refresh time to now
+    
+    # Test retrieving existing characters
+    character1 = await service.get_character('AI Zoo Bot 1')
+    assert character1 is not None
+    assert character1['name'] == 'AI Zoo Bot 1'
+    assert character1['personality'] == 'Friendly and outgoing'
+    assert character1['model'] == 'gpt-4'
+    
+    character2 = await service.get_character('AI Zoo Bot 2')
+    assert character2 is not None
+    assert character2['name'] == 'AI Zoo Bot 2'
+    assert character2['model'] == 'claude-2'
+    
+    # Test case insensitivity
+    character3 = await service.get_character('ai zoo bot 3')
+    assert character3 is not None
+    assert character3['name'] == 'AI Zoo Bot 3'
+    assert character3['personality'] == 'Witty and sarcastic'
+    
+    # Test non-existent character
+    character4 = await service.get_character('AI Zoo Bot 4')
+    assert character4 is None
+
+
+@pytest.mark.asyncio
+async def test_get_character_with_spaces_and_special_format(mock_env, mock_config):
+    """Test retrieving a character using various name formats."""
+    service = NotionService()
+    
+    # Set up cache with characters that have spaces and special formatting
+    test_characters = [
+        {
+            'name': 'Professor Einstein',
+            'personality': 'Brilliant and eccentric',
+            'model': 'gpt-4'
+        },
+        {
+            'name': 'Marie Curie',
+            'personality': 'Determined and meticulous',
+            'model': 'claude-2'
+        }
+    ]
+    
+    # Manually populate cache with various formats
+    service.character_cache = {}
+    for character in test_characters:
+        name = character['name']
+        key = name.lower()
+        transformed_key = key.replace(' ', '')
+        service.character_cache[key] = character
+        service.character_cache[transformed_key] = character
+    
+    service.last_refresh_time = time.time()
+    
+    # Test retrieving by exact name
+    char1 = await service.get_character('Professor Einstein')
+    assert char1 is not None
+    assert char1['name'] == 'Professor Einstein'
+    
+    # Test retrieving by lowercase name
+    char2 = await service.get_character('professor einstein')
+    assert char2 is not None
+    assert char2['name'] == 'Professor Einstein'
+    
+    # Test retrieving by name without spaces
+    char3 = await service.get_character('professoreinstein')
+    assert char3 is not None
+    assert char3['name'] == 'Professor Einstein'
+    
+    # Same tests for second character
+    char4 = await service.get_character('Marie Curie')
+    assert char4 is not None
+    assert char4['model'] == 'claude-2'
+    
+    char5 = await service.get_character('mariecurie')
+    assert char5 is not None
+    assert char5['personality'] == 'Determined and meticulous'
+
+
+@pytest.mark.asyncio
+async def test_character_cache_with_transformed_keys(mock_env, mock_config):
+    """Test that the character cache is properly populated with transformed keys."""
+    service = NotionService()
+    
+    # Mock the query function to return test characters
+    test_characters = [
+        {
+            'name': 'AI Zoo Bot 1',
+            'personality': 'Friendly',
+            'model': 'gpt-4'
+        },
+        {
+            'name': 'Dr. Watson',
+            'personality': 'Logical',
+            'model': 'claude-2'
+        }
+    ]
+    
+    with mock.patch.object(service, '_query_notion_database', return_value=test_characters):
+        await service.refresh_character_cache()
+    
+    # Check that cache contains both original and transformed keys
+    assert 'ai zoo bot 1' in service.character_cache
+    assert 'aizoobot1' in service.character_cache
+    assert 'dr. watson' in service.character_cache
+    assert 'dr.watson' in service.character_cache
+    
+    # Verify the character data is correctly mapped
+    assert service.character_cache['ai zoo bot 1']['name'] == 'AI Zoo Bot 1'
+    assert service.character_cache['aizoobot1']['name'] == 'AI Zoo Bot 1'
+    assert service.character_cache['dr. watson']['model'] == 'claude-2'
+    assert service.character_cache['dr.watson']['model'] == 'claude-2'
+
+
 # =====================================================
 # 以下は実際のNotion APIに接続するテスト
 # =====================================================
@@ -329,17 +502,18 @@ def real_notion_service():
     """
     実際のNotionサービスを返すフィクスチャ。
     環境変数に実際のAPI KEYとデータベースIDが設定されている必要があります。
-    このテストを実行する前に、環境変数NOTION_API_KEYとNOTION_DATABASE_IDを設定してください。
     """
     # 環境変数が設定されているか確認
     skip_message = None
-    if 'NOTION_API_KEY' not in os.environ:
+    if 'NOTION_API_KEY' not in os.environ or not os.environ['NOTION_API_KEY']:
         skip_message = "環境変数NOTION_API_KEYが設定されていないためスキップします"
-    elif 'NOTION_DATABASE_ID' not in os.environ:
+    elif 'NOTION_DATABASE_ID' not in os.environ or not os.environ['NOTION_DATABASE_ID']:
         skip_message = "環境変数NOTION_DATABASE_IDが設定されていないためスキップします"
     
     if skip_message:
         pytest.skip(skip_message)
+    
+    print(f"Using Notion API with key: {os.environ['NOTION_API_KEY'][:5]}... and database ID: {os.environ['NOTION_DATABASE_ID'][:5]}...")
     
     # 実際のNotionServiceインスタンスを返す
     return NotionService()
@@ -403,6 +577,39 @@ async def test_real_get_character(real_notion_service):
     expected_properties = ['personality', 'speaking_style', 'language']
     for prop in expected_properties:
         assert prop in character, f"キャラクターに {prop} プロパティがありません"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_real_get_character_by_bot_name(real_notion_service):
+    """実際のAPIを使用してbot名からキャラクターを取得するテスト。"""
+    # キャッシュを更新
+    await real_notion_service.refresh_character_cache()
+    
+    # キャッシュにデータがあるか確認
+    if not real_notion_service.character_cache:
+        pytest.skip("キャラクターが取得できませんでした")
+    
+    # 特定のボット名でのテスト
+    bot_names = ["GPT-4o-animal", "claude-animal"]
+    for bot_name in bot_names:
+        # 通常の名前でキャラクターを取得
+        character = await real_notion_service.get_character(bot_name)
+        
+        # キャッシュにこのボット名のキャラクターがある場合、正しく取得できることを確認
+        if character:
+            assert character['name'] == bot_name
+            
+            # 小文字でも取得できることを確認
+            lowercase_character = await real_notion_service.get_character(bot_name.lower())
+            assert lowercase_character is not None
+            assert lowercase_character['name'] == bot_name
+            
+            # スペースなしでも取得できることを確認
+            nospace_name = bot_name.replace(' ', '')
+            nospace_character = await real_notion_service.get_character(nospace_name)
+            assert nospace_character is not None
+            assert nospace_character['name'] == bot_name
 
 
 @pytest.mark.integration

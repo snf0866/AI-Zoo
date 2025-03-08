@@ -4,6 +4,7 @@ Main Discord bot implementation for AI Zoo.
 import os
 import logging
 import asyncio
+import discord
 from typing import Optional
 
 from utils.config_loader import get_env, load_env_vars
@@ -45,11 +46,12 @@ async def main():
     env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', '.env')
     load_env_vars(env_path)
     
-    # Get bot token from environment
+    # Get bot token and name from environment
     token = get_env('DISCORD_TOKEN_BOT1')
+    bot_name = os.environ.get('BOT_NAME', 'GPT-4o-animal')  # デフォルト値としてGPT-4o-animalを使用
     
     # Create and start the bot
-    bot = AIZooBot(character_name="AI Zoo Bot 1")
+    bot = AIZooBot(character_name=bot_name)
     await bot.start(token)
 
 

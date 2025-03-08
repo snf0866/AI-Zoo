@@ -6,6 +6,7 @@ import os
 import logging
 import asyncio
 import random
+import discord
 from typing import Optional
 
 from utils.config_loader import get_env, load_env_vars
@@ -72,11 +73,12 @@ async def main():
     env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', '.env')
     load_env_vars(env_path)
     
-    # Get bot token from environment
+    # Get bot token and name from environment
     token = get_env('DISCORD_TOKEN_BOT2')
+    bot_name = os.environ.get('BOT_NAME', 'claude-animal')  # デフォルト値としてclaude-animalを使用
     
     # Create and start the bot
-    bot = SecondaryBot(character_name="AI Zoo Bot 2")
+    bot = SecondaryBot(character_name=bot_name)
     await bot.start(token)
 
 

@@ -127,17 +127,35 @@ class LLMService:
             "anthropic-version": "2023-06-01"
         }
         
-        payload = {
-            "model": model,
-            "prompt": prompt,
-            "max_tokens_to_sample": max_tokens,
-            "temperature": 0.7,
-            "top_p": 1.0
-        }
+        # Use Messages API for Claude 3 models, otherwise use Complete API
+        if model.startswith("claude-3"):
+            payload = {
+                "model": model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "max_tokens": max_tokens,
+                "temperature": 0.7
+            }
+            api_endpoint = "https://api.anthropic.com/v1/messages"
+        else:
+            # Format prompt for Complete API
+            formatted_prompt = f"\n\nHuman: {prompt}\n\nAssistant:"
+            payload = {
+                "model": model,
+                "prompt": formatted_prompt,
+                "max_tokens_to_sample": max_tokens,
+                "temperature": 0.7,
+                "top_p": 1.0
+            }
+            api_endpoint = "https://api.anthropic.com/v1/complete"
         
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                "https://api.anthropic.com/v1/complete",
+                api_endpoint,
                 headers=headers,
                 json=payload
             ) as response:
@@ -147,4 +165,8 @@ class LLMService:
                     raise Exception(f"Anthropic API error: {response.status} - {error_text}")
                 
                 result = await response.json()
-                return result["completion"]
+                # Handle different response formats between APIs
+                if model.startswith("claude-3"):
+                    return result["content"][0]["text"]
+                else:
+                    return result["completion"]
