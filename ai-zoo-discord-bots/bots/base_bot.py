@@ -147,8 +147,8 @@ class BaseDiscordBot(commands.Bot):
                 self.in_cooldown = True
                 self.conversation_manager.reset_conversation_turns()
                 
-                # Set cooldown for a random time between 5-15 minutes
-                cooldown_minutes = random.randint(5, 15)
+                # Set cooldown for a random time between 1-3 minutes
+                cooldown_minutes = random.randint(1, 3)
                 self.cooldown_until = asyncio.get_event_loop().time() + (cooldown_minutes * 60)
                 
                 # Schedule cooldown reset
