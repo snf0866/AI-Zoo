@@ -8,7 +8,7 @@ aiohttp>=3.8.0
 python-dotenv>=0.19.0
 
 # Development tools (optional)
-watchgod>=0.7.0  # For auto-reloading in development
+watchgod>=0.8.2  # For auto-reloading in development
 
 # Typing extensions
 typing-extensions>=4.0.0
@@ -27,3 +27,8 @@ openai>=0.27.0
 
 # For Anthropic API
 anthropic>=0.2.0
+
+# For database
+SQLAlchemy>=2.0.0
+aiosqlite>=0.19.0  # For async SQLite support
+alembic>=1.13.0   # For database migrations

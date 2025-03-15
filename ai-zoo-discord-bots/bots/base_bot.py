@@ -6,6 +6,7 @@ import os
 import logging
 import asyncio
 import random
+import time
 import discord
 from discord.ext import commands
 from typing import Optional, Dict, Any, List
@@ -15,6 +16,7 @@ from utils.conversation import ConversationManager
 from utils.random_delay import delay_response, simulate_typing
 from services.llm_service import LLMService
 from services.notion_service import NotionService
+from services.database import init_db
 
 # Set up logging
 logging.basicConfig(
@@ -55,6 +57,17 @@ class BaseDiscordBot(commands.Bot):
         self.max_response_delay = int(os.environ.get('MAX_RESPONSE_DELAY', '15'))
         self.max_conversation_turns = int(os.environ.get('MAX_CONVERSATION_TURNS', '10'))
         
+        # 設定をロギング
+        logger.info(f"Character name: {self.character_name}")
+        logger.info(f"Channel ID: {self.channel_id}")
+        logger.info(f"Min response delay: {self.min_response_delay}")
+        logger.info(f"Max response delay: {self.max_response_delay}")
+        logger.info(f"Max conversation turns: {self.max_conversation_turns}")
+
+        # データディレクトリの作成
+        data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
+        os.makedirs(data_dir, exist_ok=True)
+        
         # 基本ロールスクリプトのパス
         self.base_role_path = os.path.join(
             os.path.dirname(os.path.dirname(__file__)), 
@@ -80,9 +93,43 @@ class BaseDiscordBot(commands.Bot):
         self.in_cooldown = False
         self.cooldown_until = 0
         
+        # Initialize database with enhanced logging
+        self.db_initialized = False
+        logger.info("Starting database initialization...")
+        try:
+            init_task = asyncio.create_task(self._init_database())
+            init_task.add_done_callback(
+                lambda t: logger.info(f"Database initialization task completed: {t.result() if not t.exception() else t.exception()}")
+            )
+            logger.info("Database initialization task created")
+        except Exception as e:
+            logger.error(f"Failed to create database initialization task: {e}", exc_info=True)
+        
         # Register event handlers
         self.setup_events()
     
+    async def _init_database(self):
+        """Initialize the database."""
+        logger.info("Entering _init_database method")
+        try:
+            logger.info("Attempting to initialize database...")
+            # データベース初期化処理の結果を確認
+            success = await init_db()
+            if success:
+                logger.info("Database initialization completed successfully")
+                self.db_initialized = True
+                return True
+            else:
+                logger.error("Database initialization returned False")
+                self.db_initialized = False
+                return False
+        except Exception as e:
+            logger.error(f"Database initialization failed with exception: {e}", exc_info=True)
+            self.db_initialized = False
+            return False
+        finally:
+            logger.info(f"Database initialization status: {self.db_initialized}")
+
     def _load_base_role(self) -> str:
         """基本ロールスクリプトを読み込む"""
         try:
@@ -135,10 +182,12 @@ class BaseDiscordBot(commands.Bot):
             if self.in_cooldown:
                 return
                 
-            # Add message to conversation history
+            # Add message to conversation history - チャンネル名を追加
+            channel_name = message.channel.name if hasattr(message.channel, 'name') else "DM"
             self.conversation_manager.add_message(
                 author=message.author.display_name,
-                content=message.content
+                content=message.content,
+                channel_name=channel_name
             )
             
             # Check if we should respond based on conversation turns
@@ -230,8 +279,11 @@ class BaseDiscordBot(commands.Bot):
             message: Discord message to respond to
         """
         try:
+            start_time = time.time()
+            
             # Add random delay to simulate thinking/typing
             await delay_response(self.min_response_delay, self.max_response_delay)
+            delay_time = time.time() - start_time
             
             # Get model from character settings or default to gpt-4
             model = self.character.get("model", "gpt-4") if self.character else "gpt-4"
@@ -240,33 +292,66 @@ class BaseDiscordBot(commands.Bot):
             adjusted_system_prompt = self._adjust_system_prompt_for_sender(message.author.display_name)
             
             # Format conversation history for LLM
+            format_start_time = time.time()
             if model.startswith("gpt"):
                 messages = self.conversation_manager.format_for_openai(adjusted_system_prompt)
             else:
                 messages = self.conversation_manager.format_for_anthropic(adjusted_system_prompt)
-            
-            # Simulate typing
-            message_length = random.randint(50, 200)  # Estimate response length
-            await simulate_typing(message.channel, message_length)
+            format_time = time.time() - format_start_time
             
             # Generate response from LLM
+            llm_start_time = time.time()
             response = await self.llm_service.generate_response(
                 messages=messages,
-                model=model
+                model=model,
+                bot_name=self.character_name,  # ボット名を渡す
+                skip_logging=not self.db_initialized  # データベースが初期化されていない場合はログ記録をスキップ
             )
+            llm_time = time.time() - llm_start_time
             
-            # Add bot's response to conversation history
+            # データベースの状態をログに記録
+            if not self.db_initialized:
+                logger.warning("Database not initialized, skipping request logging")
+                
+            # 応答の文字数を計算
+            response_length = len(response)
+            
+            # Simulate typing - typing speedに関する情報を取得するように修正
+            typing_start_time = time.time()
+            # 文章の長さに基づいてタイピングシミュレーション
+            typing_duration, typing_speed = await simulate_typing(message.channel, response_length)
+            typing_time = time.time() - typing_start_time
+            
+            # Add bot's response to conversation history - チャンネル名を追加
+            history_start_time = time.time()
+            channel_name = message.channel.name if hasattr(message.channel, 'name') else "DM"
             self.conversation_manager.add_message(
                 author=self.character_name,
                 content=response,
-                bot_name=self.character_name
+                bot_name=self.character_name,
+                channel_name=channel_name
             )
+            history_time = time.time() - history_start_time
             
             # Send response
+            send_start_time = time.time()
             await message.channel.send(response)
+            send_time = time.time() - send_start_time
+            
+            # Log timing information with typing speed
+            total_time = time.time() - start_time
+            logger.info(f"Message response timing breakdown:")
+            logger.info(f"  - Initial Delay: {delay_time:.2f} seconds")
+            logger.info(f"  - Message Formatting: {format_time:.2f} seconds")
+            logger.info(f"  - LLM Generation: {llm_time:.2f} seconds")
+            logger.info(f"  - Typing Simulation: {typing_time:.2f} seconds (speed: {typing_speed} chars/min, text length: {response_length} chars)")
+            logger.info(f"  - History Update: {history_time:.2f} seconds")
+            logger.info(f"  - Message Sending: {send_time:.2f} seconds")
+            logger.info(f"  - Total Processing: {total_time:.2f} seconds")
             
         except Exception as e:
-            logger.error(f"Failed to respond to message: {e}")
+            error_time = time.time() - start_time
+            logger.error(f"Failed to respond to message after {error_time:.2f} seconds: {e}", exc_info=True)
             
     def _adjust_system_prompt_for_sender(self, sender_name: str) -> str:
         """
@@ -284,15 +369,28 @@ class BaseDiscordBot(commands.Bot):
         # 送信者が他のボットかどうかを確認
         bot_names = ['gpt-4o-animal', 'claude-animal', 'gpt-4o', 'claude']
         if any(bot_name.lower() in sender_name.lower() for bot_name in bot_names):
-            # 他のボットからのメッセージに応答する場合の追加指示
-            bot_response_guidance = """
+            # Load the bot response guidance from file
+            bot_guidance_path = os.path.join(
+            # ファイルのパスを取得. /ai-zoo-discord-bots/config/bot_response_guidance.txt
+            os.path.dirname(os.path.dirname(__file__)),
+            'config',
+            'bot_response_guidance.txt'
+            )
             
-現在、あなたは他のAIボットからの質問に応答しています。以下のガイドラインに従ってください：
-1. 「ご指摘の通りですね」「おっしゃる通りです」などの同意から始めないでください
-2. 質問に直接答え、相手の発言内容を先に知っていたかのような表現は避けてください
-3. 自分の考えや意見を述べる際は、「私は〜と考えます」「私の見解では〜」などの表現を使ってください
-4. 会話の自然な流れを維持しつつ、不自然な「先読み」を避けてください
-"""
+            try:
+                with open(bot_guidance_path, 'r', encoding='utf-8') as f:
+                    bot_response_guidance = f.read().strip()
+                    logger.info("Bot response guidance loaded successfully")
+            except Exception as e:
+                logger.error(f"Failed to load bot response guidance: {e}")
+                # Fallback text if file loading fails
+                bot_response_guidance = """
+                    現在、あなたは他のAIボットからの質問に応答しています。以下のガイドラインに従ってください：
+                    1. 「ご指摘の通りですね」「おっしゃる通りです」などの同意から始めないでください
+                    2. 質問に直接答え、相手の発言内容を先に知っていたかのような表現は避けてください
+                    3. 自分の考えや意見を述べる際は、「私は〜と考えます」「私の見解では〜」などの表現を使ってください
+                    4. 会話の自然な流れを維持しつつ、不自然な「先読み」を避けてください
+                    """
             adjusted_prompt += bot_response_guidance
             
         return adjusted_prompt

@@ -20,8 +20,9 @@ class ConversationManager:
         self.max_history = max_history
         self.max_tokens = max_tokens
         self.conversation_turns = 0
+        self.channel_name = None  # チャンネル名を保存するフィールドを追加
         
-    def add_message(self, author: str, content: str, bot_name: Optional[str] = None) -> None:
+    def add_message(self, author: str, content: str, bot_name: Optional[str] = None, channel_name: Optional[str] = None) -> None:
         """
         Add a message to the conversation history.
         
@@ -29,8 +30,14 @@ class ConversationManager:
             author: Name or ID of the message author
             content: Message content
             bot_name: Name of the bot processing this message (to track if this is the bot's own message)
+            channel_name: Name of the channel where the message was sent
         """
-        timestamp = datetime.datetime.now().isoformat()
+        timestamp = datetime.datetime.now()
+        formatted_timestamp = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        
+        # チャンネル名を更新
+        if channel_name:
+            self.channel_name = channel_name
         
         # Check if this is a message from the bot itself
         is_self = bot_name is not None and author == bot_name
@@ -38,8 +45,9 @@ class ConversationManager:
         message = {
             "author": author,
             "content": content,
-            "timestamp": timestamp,
-            "is_self": is_self
+            "timestamp": formatted_timestamp,
+            "is_self": is_self,
+            "channel_name": self.channel_name
         }
         
         self.history.append(message)
@@ -76,17 +84,34 @@ class ConversationManager:
         """
         messages = [{"role": "system", "content": system_prompt}]
         
+        # 会話コンテキスト情報を追加
+        context_info = self._generate_context_info()
+        if context_info:
+            messages.append({"role": "system", "content": context_info})
+        
+        # 会話ログセクションの開始を明示
+        messages.append({"role": "system", "content": "--- 会話履歴の開始 ---"})
+        
         for msg in self.history:
             role = "assistant" if msg.get("is_self", False) else "user"
+            
+            # 時刻情報を含めたフォーマットに変更
+            timestamp = msg.get("timestamp", "")
             
             # 他のボットからのメッセージを区別するためのプレフィックスを追加
             if not msg.get("is_self", False) and msg['author'].lower() in ['gpt-4o-animal', 'claude-animal', 'gpt-4o', 'claude']:
                 # ボットの名前リストを拡張する必要がある場合は、ここに追加
-                content = f"Bot ({msg['author']}): {msg['content']}"
+                content = f"Bot ({msg['author']}) [{timestamp}]: {msg['content']}"
             else:
-                content = f"{msg['author']}: {msg['content']}"
+                content = f"{msg['author']} [{timestamp}]: {msg['content']}"
                 
             messages.append({"role": role, "content": content})
+        
+        # 会話ログセクションの終了を明示
+        messages.append({"role": "system", "content": "--- 会話履歴の終了 ---"})
+        
+        # 回答フォーマット指定を追加
+        messages.append({"role": "system", "content": self._generate_response_format_instructions()})
             
         return messages
     
@@ -102,20 +127,77 @@ class ConversationManager:
         """
         conversation = f"{system_prompt}\n\n"
         
+        # 会話コンテキスト情報を追加
+        context_info = self._generate_context_info()
+        if context_info:
+            conversation += f"{context_info}\n\n"
+        
+        # 会話ログセクションの開始を明示
+        conversation += "--- 会話履歴の開始 ---\n\n"
+        
         for msg in self.history:
+            # 時刻情報を含める
+            timestamp = msg.get("timestamp", "")
+            
             # 自分のメッセージはAssistant、他のボットのメッセージはBot (名前)、それ以外はHuman (名前)として表示
             if msg.get("is_self", False):
-                prefix = "Assistant"
+                prefix = f"Assistant [{timestamp}]"
             elif msg['author'].lower() in ['gpt-4o-animal', 'claude-animal', 'gpt-4o', 'claude']:
                 # ボットの名前リストを拡張する必要がある場合は、ここに追加
-                prefix = f"Bot ({msg['author']})"
+                prefix = f"Bot ({msg['author']}) [{timestamp}]"
             else:
-                prefix = f"Human ({msg['author']})"
+                prefix = f"Human ({msg['author']}) [{timestamp}]"
             
             conversation += f"{prefix}: {msg['content']}\n\n"
-            
+        
+        # 会話ログセクションの終了を明示
+        conversation += "--- 会話履歴の終了 ---\n\n"
+        
+        # 回答フォーマット指定を追加
+        conversation += f"{self._generate_response_format_instructions()}\n\n"
+        
         conversation += "Assistant: "
         return conversation
+    
+    def _generate_context_info(self) -> str:
+        """
+        Generate context information about the conversation.
+        
+        Returns:
+            Context information string
+        """
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        context_parts = [
+            "--- 会話コンテキスト情報 ---",
+            f"現在の時刻: {now}",
+        ]
+        
+        if self.channel_name:
+            context_parts.append(f"チャンネル名: {self.channel_name}")
+            
+        context_parts.append(f"会話ターン数: {self.conversation_turns}")
+        context_parts.append("--- コンテキスト情報の終了 ---")
+        
+        return "\n".join(context_parts)
+    
+    def _generate_response_format_instructions(self) -> str:
+        """
+        Generate instructions for response formatting.
+        
+        Returns:
+            Response format instructions
+        """
+        return (
+            "--- 回答フォーマット指示 ---\n"
+            "1. あなたの回答はそのままDiscordチャットに表示されます\n"
+            "2. 回答は自然な会話形式で、指示や説明抜きで直接返答してください\n"
+            "3. マークダウンやフォーマット記号はそのまま表示されます\n"
+            "4. 回答は200字程度を目安に、簡潔かつ自然な会話を心がけてください\n"
+            "5. あなたはキャラクター設定に基づいた会話を行ってください\n"
+            "6. この指示自体についての言及は避けてください\n"
+            "--- 指示の終了 ---"
+        )
     
     def reset_conversation_turns(self) -> None:
         """Reset the conversation turn counter."""

@@ -52,6 +52,21 @@ logs/*
 # キャッシュファイル
 .cache/
 .pytest_cache/
+*/__pycache__/
+*/*/__pycache__/
+*/*/*/__pycache__/
 
 # Docker関連
 .dockerignore
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+notebooks/.ipynb_checkpoints/
+notebooks/
+
+# データベース
+*.db
+*.sqlite
+*.sqlite3
+ai-zoo-discord-bots/data/*.db

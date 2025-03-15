@@ -6,11 +6,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     restart: unless-stopped
-    command: main
+    command: ["main", "--dev"]  # 開発モードを追加
     env_file:
       - ../config/.env
     volumes:
       - ../logs:/app/logs
+      - ..:/app  # ソースコードの変更を反映するためのボリュームマウント
     environment:
       - BOT_NAME=GPT-4o-animal
       - DISCORD_TOKEN=${DISCORD_TOKEN_BOT1}
@@ -23,11 +24,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     restart: unless-stopped
-    command: secondary
+    command: ["secondary", "--dev"]  # 開発モードを追加
     env_file:
       - ../config/.env
     volumes:
       - ../logs:/app/logs
+      - ..:/app  # ソースコードの変更を反映するためのボリュームマウント
     environment:
       - BOT_NAME=claude-animal
       - DISCORD_TOKEN=${DISCORD_TOKEN_BOT2}
@@ -47,6 +49,7 @@ services:
   #     - ../config/.env
   #   volumes:
   #     - ../logs:/app/logs
+  #     - ..:/app  # ソースコードの変更を反映するためのボリュームマウント
   #   environment:
   #     - BOT_NAME=new-character-name  # Notionに登録されているキャラクター名
   #     - DISCORD_TOKEN=${DISCORD_TOKEN_BOT3}

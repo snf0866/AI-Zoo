@@ -4,11 +4,13 @@ Service for interacting with Language Model APIs (OpenAI, Anthropic, etc.)
 import os
 import logging
 import json
+import time
 from typing import Dict, Any, List, Optional, Union
 import aiohttp
 import asyncio
 
 from utils.config_loader import get_env
+from services.database import AsyncSessionLocal, log_llm_request
 
 # Set up logging
 logging.basicConfig(
@@ -23,14 +25,30 @@ class LLMService:
     
     def __init__(self):
         """Initialize the LLM service."""
+        self.logger = logging.getLogger(__name__)
+        self.logger.info("Initializing LLMService")
         self.openai_api_key = os.environ.get('OPENAI_API_KEY')
         self.anthropic_api_key = os.environ.get('ANTHROPIC_API_KEY')
         self.max_token_limit = int(os.environ.get('MAX_TOKEN_LIMIT', '500'))
         
+        # OpenAI APIキーの確認
+        if not os.environ.get("OPENAI_API_KEY"):
+            self.logger.error("OPENAI_API_KEY is not set in environment variables")
+        else:
+            self.logger.info("OPENAI_API_KEY is properly set")
+        
+        # Anthropic APIキーの確認
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            self.logger.error("ANTHROPIC_API_KEY is not set in environment variables")
+        else:
+            self.logger.info("ANTHROPIC_API_KEY is properly set")
+        
     async def generate_response(self, 
                                messages: Union[List[Dict[str, str]], str],
                                model: str = "gpt-4",
-                               max_tokens: Optional[int] = None) -> str:
+                               max_tokens: Optional[int] = None,
+                               bot_name: Optional[str] = None,
+                               skip_logging: bool = False) -> str:
         """
         Generate a response from an LLM based on the provided messages.
         
@@ -38,6 +56,8 @@ class LLMService:
             messages: Either a list of messages for OpenAI format or a string for Anthropic format
             model: Model to use for generation
             max_tokens: Maximum number of tokens to generate
+            bot_name: Name of the bot making the request (for logging)
+            skip_logging: Whether to skip logging the request to the database
             
         Returns:
             Generated response text
@@ -46,19 +66,74 @@ class LLMService:
             ValueError: If the model is not supported or API keys are missing
             Exception: If the API request fails
         """
+        self.logger.info(f"Generating response using model: {model} for bot: {bot_name}")
+        self.logger.info(f"Skip logging: {skip_logging}")
+        
+        start_time = time.time()
+        response = None
+        error = None
+        
         if max_tokens is None:
             max_tokens = self.max_token_limit
             
-        if model.startswith("gpt"):
-            if not self.openai_api_key:
-                raise ValueError("OpenAI API key is required for GPT models")
-            return await self._generate_openai_response(messages, model, max_tokens)
-        elif model.startswith("claude"):
-            if not self.anthropic_api_key:
-                raise ValueError("Anthropic API key is required for Claude models")
-            return await self._generate_anthropic_response(messages, model, max_tokens)
-        else:
-            raise ValueError(f"Unsupported model: {model}")
+        try:
+            if model.startswith("gpt"):
+                if not self.openai_api_key:
+                    raise ValueError("OpenAI API key is required for GPT models")
+                self.logger.info("Using OpenAI API")
+                response = await self._generate_openai_response(messages, model, max_tokens)
+            elif model.startswith("claude"):
+                if not self.anthropic_api_key:
+                    raise ValueError("Anthropic API key is required for Claude models")
+                self.logger.info("Using Anthropic API")
+                response = await self._generate_anthropic_response(messages, model, max_tokens)
+            else:
+                error_msg = f"Unsupported model: {model}"
+                self.logger.error(error_msg)
+                raise ValueError(error_msg)
+            
+            llm_time = time.time() - start_time
+            
+            # Start measuring post-processing time
+            post_start_time = time.time()
+            
+            # Here you can add any post-processing of the response if needed
+            
+            post_process_time = time.time() - post_start_time
+            total_time = time.time() - start_time
+            
+            self.logger.info(f"Response generation timing for {model}:")
+            self.logger.info(f"  - LLM Response Time: {llm_time:.2f} seconds")
+            self.logger.info(f"  - Post-processing Time: {post_process_time:.2f} seconds")
+            self.logger.info(f"  - Total Time: {total_time:.2f} seconds")
+            
+        except Exception as e:
+            error = str(e)
+            error_time = time.time() - start_time
+            self.logger.error(f"Error generating response after {error_time:.2f} seconds: {e}", exc_info=True)
+            raise
+        finally:
+            # Log request to database if bot_name is provided and logging is not skipped
+            if bot_name and not skip_logging:
+                total_time = time.time() - start_time
+                try:
+                    async with AsyncSessionLocal() as session:
+                        await log_llm_request(
+                            session=session,
+                            model=model,
+                            messages=messages if isinstance(messages, list) else {"prompt": messages},
+                            response=response if response else "",
+                            response_time=llm_time if response else total_time,
+                            total_time=total_time,
+                            bot_name=bot_name,
+                            error=error
+                        )
+                    self.logger.info("Successfully logged request to database")
+                except Exception as e:
+                    self.logger.error(f"Failed to log request to database: {e}", exc_info=True)
+            
+            if response:
+                return response
             
     async def _generate_openai_response(self, 
                                       messages: List[Dict[str, str]],
@@ -75,7 +150,8 @@ class LLMService:
         Returns:
             Generated response text
         """
-        logger.info(f"Generating response with OpenAI model: {model}")
+        self.logger.info(f"Generating response with OpenAI model: {model}")
+        start_time = time.time()
         
         headers = {
             "Content-Type": "application/json",
@@ -98,10 +174,12 @@ class LLMService:
             ) as response:
                 if response.status != 200:
                     error_text = await response.text()
-                    logger.error(f"OpenAI API error: {error_text}")
+                    self.logger.error(f"OpenAI API error: {error_text}")
                     raise Exception(f"OpenAI API error: {response.status} - {error_text}")
                 
                 result = await response.json()
+                api_time = time.time() - start_time
+                self.logger.info(f"OpenAI API request completed in {api_time:.2f} seconds")
                 return result["choices"][0]["message"]["content"]
                 
     async def _generate_anthropic_response(self, 
@@ -119,7 +197,8 @@ class LLMService:
         Returns:
             Generated response text
         """
-        logger.info(f"Generating response with Anthropic model: {model}")
+        self.logger.info(f"Generating response with Anthropic model: {model}")
+        start_time = time.time()
         
         headers = {
             "Content-Type": "application/json",
@@ -161,10 +240,13 @@ class LLMService:
             ) as response:
                 if response.status != 200:
                     error_text = await response.text()
-                    logger.error(f"Anthropic API error: {error_text}")
+                    self.logger.error(f"Anthropic API error: {error_text}")
                     raise Exception(f"Anthropic API error: {response.status} - {error_text}")
                 
                 result = await response.json()
+                api_time = time.time() - start_time
+                self.logger.info(f"Anthropic API request completed in {api_time:.2f} seconds")
+                
                 # Handle different response formats between APIs
                 if model.startswith("claude-3"):
                     return result["content"][0]["text"]

@@ -9,6 +9,11 @@ pytest-asyncio = "*"
 aiohttp = "*"
 dotenv = "*"
 discord = "*"
+jupyter = "*"
+pandas = "*"
+matplotlib = "*"
+seaborn = "*"
+ipykernel = "*"
 
 [dev-packages]
 
