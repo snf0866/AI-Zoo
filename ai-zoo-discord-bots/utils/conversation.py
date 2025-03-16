@@ -60,6 +60,33 @@ class ConversationManager:
         if not is_self:
             self.conversation_turns += 1
             
+    def add_url_content(self, related_author: str, content: str) -> None:
+        """
+        URLコンテンツを会話履歴に追加する
+        
+        Args:
+            related_author: 関連するメッセージの著者
+            content: URLから取得したコンテンツ
+        """
+        timestamp = datetime.datetime.now()
+        formatted_timestamp = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        
+        message = {
+            "author": "URL_CONTENT",  # 特別な著者名
+            "related_author": related_author,  # 関連するメッセージの著者
+            "content": content,
+            "timestamp": formatted_timestamp,
+            "is_self": False,
+            "is_url_content": True,  # URLコンテンツであることを示すフラグ
+            "channel_name": self.channel_name
+        }
+        
+        self.history.append(message)
+        
+        # 最大履歴数を超えた場合、古いメッセージを削除
+        if len(self.history) > self.max_history:
+            self.history = self.history[-self.max_history:]
+    
     def get_recent_messages(self, count: int = 5) -> List[Dict[str, Any]]:
         """
         Get the most recent messages from the conversation history.
@@ -93,19 +120,27 @@ class ConversationManager:
         messages.append({"role": "system", "content": "--- 会話履歴の開始 ---"})
         
         for msg in self.history:
-            role = "assistant" if msg.get("is_self", False) else "user"
-            
-            # 時刻情報を含めたフォーマットに変更
-            timestamp = msg.get("timestamp", "")
-            
-            # 他のボットからのメッセージを区別するためのプレフィックスを追加
-            if not msg.get("is_self", False) and msg['author'].lower() in ['gpt-4o-animal', 'claude-animal', 'gpt-4o', 'claude']:
-                # ボットの名前リストを拡張する必要がある場合は、ここに追加
-                content = f"Bot ({msg['author']}) [{timestamp}]: {msg['content']}"
+            # URLコンテンツの場合は特別な処理
+            if msg.get("is_url_content", False):
+                related_author = msg.get("related_author", "Unknown")
+                messages.append({
+                    "role": "system", 
+                    "content": f"以下は{related_author}が共有したURLのコンテンツです：\n\n{msg['content']}"
+                })
             else:
-                content = f"{msg['author']} [{timestamp}]: {msg['content']}"
+                role = "assistant" if msg.get("is_self", False) else "user"
                 
-            messages.append({"role": role, "content": content})
+                # 時刻情報を含めたフォーマットに変更
+                timestamp = msg.get("timestamp", "")
+                
+                # 他のボットからのメッセージを区別するためのプレフィックスを追加
+                if not msg.get("is_self", False) and msg['author'].lower() in ['gpt-4o-animal', 'claude-animal', 'gpt-4o', 'claude']:
+                    # ボットの名前リストを拡張する必要がある場合は、ここに追加
+                    content = f"Bot ({msg['author']}) [{timestamp}]: {msg['content']}"
+                else:
+                    content = f"{msg['author']} [{timestamp}]: {msg['content']}"
+                    
+                messages.append({"role": role, "content": content})
         
         # 会話ログセクションの終了を明示
         messages.append({"role": "system", "content": "--- 会話履歴の終了 ---"})
@@ -136,19 +171,24 @@ class ConversationManager:
         conversation += "--- 会話履歴の開始 ---\n\n"
         
         for msg in self.history:
-            # 時刻情報を含める
-            timestamp = msg.get("timestamp", "")
-            
-            # 自分のメッセージはAssistant、他のボットのメッセージはBot (名前)、それ以外はHuman (名前)として表示
-            if msg.get("is_self", False):
-                prefix = f"Assistant [{timestamp}]"
-            elif msg['author'].lower() in ['gpt-4o-animal', 'claude-animal', 'gpt-4o', 'claude']:
-                # ボットの名前リストを拡張する必要がある場合は、ここに追加
-                prefix = f"Bot ({msg['author']}) [{timestamp}]"
+            # URLコンテンツの場合は特別な処理
+            if msg.get("is_url_content", False):
+                related_author = msg.get("related_author", "Unknown")
+                conversation += f"System: 以下は{related_author}が共有したURLのコンテンツです：\n\n{msg['content']}\n\n"
             else:
-                prefix = f"Human ({msg['author']}) [{timestamp}]"
-            
-            conversation += f"{prefix}: {msg['content']}\n\n"
+                # 時刻情報を含める
+                timestamp = msg.get("timestamp", "")
+                
+                # 自分のメッセージはAssistant、他のボットのメッセージはBot (名前)、それ以外はHuman (名前)として表示
+                if msg.get("is_self", False):
+                    prefix = f"Assistant [{timestamp}]"
+                elif msg['author'].lower() in ['gpt-4o-animal', 'claude-animal', 'gpt-4o', 'claude']:
+                    # ボットの名前リストを拡張する必要がある場合は、ここに追加
+                    prefix = f"Bot ({msg['author']}) [{timestamp}]"
+                else:
+                    prefix = f"Human ({msg['author']}) [{timestamp}]"
+                
+                conversation += f"{prefix}: {msg['content']}\n\n"
         
         # 会話ログセクションの終了を明示
         conversation += "--- 会話履歴の終了 ---\n\n"

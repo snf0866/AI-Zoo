@@ -14,6 +14,7 @@ from typing import Optional, Dict, Any, List
 from utils.config_loader import get_env, load_env_vars
 from utils.conversation import ConversationManager
 from utils.random_delay import delay_response, simulate_typing
+from utils.url_content_fetcher import process_message_urls
 from services.llm_service import LLMService
 from services.notion_service import NotionService
 from services.database import init_db
@@ -181,7 +182,7 @@ class BaseDiscordBot(commands.Bot):
             # Check if we're in cooldown
             if self.in_cooldown:
                 return
-                
+            
             # Add message to conversation history - チャンネル名を追加
             channel_name = message.channel.name if hasattr(message.channel, 'name') else "DM"
             self.conversation_manager.add_message(
@@ -190,6 +191,24 @@ class BaseDiscordBot(commands.Bot):
                 channel_name=channel_name
             )
             
+            # メッセージ内のURLを処理
+            try:
+                url_content = await process_message_urls(
+                    message.content,
+                    max_urls=3,  # 処理する最大URL数
+                    max_length_per_url=1000  # URL毎の最大文字数
+                )
+                
+                # URLコンテンツがある場合は会話履歴に追加
+                if url_content:
+                    logger.info(f"Adding URL content from message by {message.author.display_name}")
+                    self.conversation_manager.add_url_content(
+                        related_author=message.author.display_name,
+                        content=url_content
+                    )
+            except Exception as e:
+                logger.error(f"Error processing URLs in message: {e}", exc_info=True)
+                
             # Check if we should respond based on conversation turns
             if self.conversation_manager.should_cool_down(self.max_conversation_turns):
                 logger.info(f"Cooling down after {self.max_conversation_turns} conversation turns")

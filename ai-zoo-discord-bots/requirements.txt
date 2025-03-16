@@ -4,6 +4,9 @@ discord.py>=2.0.0
 # HTTP client for API requests
 aiohttp>=3.8.0
 
+# HTML parsing for URL content fetching
+beautifulsoup4>=4.10.0
+
 # Environment variable management
 python-dotenv>=0.19.0
 
@@ -32,3 +35,6 @@ anthropic>=0.2.0
 SQLAlchemy>=2.0.0
 aiosqlite>=0.19.0  # For async SQLite support
 alembic>=1.13.0   # For database migrations
+
+# For dynamic content scraping (JavaScript-heavy websites)
+playwright>=1.40.0
