@@ -66,7 +66,7 @@ class ConversationHandlerMixin:
                 "author": message.author.display_name,
                 "channel": message.channel.name if hasattr(message.channel, 'name') else "DM",
                 "content": message.content,
-                "conversation_history": self.conversation_manager.get_recent_history(5)
+                "conversation_history": self.conversation_manager.get_recent_messages(5)  # メソッド名を修正
             }
             
             # 複数の応答候補が返された場合は効用関数で選択、そうでなければ単一応答を使用

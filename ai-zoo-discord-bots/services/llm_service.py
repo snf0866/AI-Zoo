@@ -48,7 +48,8 @@ class LLMService:
                                model: str = "gpt-4",
                                max_tokens: Optional[int] = None,
                                bot_name: Optional[str] = None,
-                               skip_logging: bool = False) -> str:
+                               skip_logging: bool = False,
+                               n: int = 1) -> Union[str, List[str]]:
         """
         Generate a response from an LLM based on the provided messages.
         
@@ -58,15 +59,16 @@ class LLMService:
             max_tokens: Maximum number of tokens to generate
             bot_name: Name of the bot making the request (for logging)
             skip_logging: Whether to skip logging the request to the database
+            n: Number of response candidates to generate (only supported by OpenAI models)
             
         Returns:
-            Generated response text
+            Generated response text or a list of response texts if n > 1
             
         Raises:
             ValueError: If the model is not supported or API keys are missing
             Exception: If the API request fails
         """
-        self.logger.info(f"Generating response using model: {model} for bot: {bot_name}")
+        self.logger.info(f"Generating response using model: {model} for bot: {bot_name} with n={n}")
         self.logger.info(f"Skip logging: {skip_logging}")
         
         start_time = time.time()
@@ -81,11 +83,14 @@ class LLMService:
                 if not self.openai_api_key:
                     raise ValueError("OpenAI API key is required for GPT models")
                 self.logger.info("Using OpenAI API")
-                response = await self._generate_openai_response(messages, model, max_tokens)
+                response = await self._generate_openai_response(messages, model, max_tokens, n)
             elif model.startswith("claude"):
                 if not self.anthropic_api_key:
                     raise ValueError("Anthropic API key is required for Claude models")
                 self.logger.info("Using Anthropic API")
+                # Anthropicは現在複数候補生成に対応していないため、nパラメータは無視されます
+                if n > 1:
+                    self.logger.warning("Multiple response generation (n > 1) is not supported by Anthropic API, ignoring n parameter")
                 response = await self._generate_anthropic_response(messages, model, max_tokens)
             else:
                 error_msg = f"Unsupported model: {model}"
@@ -118,11 +123,13 @@ class LLMService:
                 total_time = time.time() - start_time
                 try:
                     async with AsyncSessionLocal() as session:
+                        # 複数応答の場合は最初の応答をログに記録
+                        log_response = response[0] if isinstance(response, list) else response
                         await log_llm_request(
                             session=session,
                             model=model,
                             messages=messages if isinstance(messages, list) else {"prompt": messages},
-                            response=response if response else "",
+                            response=log_response if log_response else "",
                             response_time=llm_time if response else total_time,
                             total_time=total_time,
                             bot_name=bot_name,
@@ -138,7 +145,8 @@ class LLMService:
     async def _generate_openai_response(self, 
                                       messages: List[Dict[str, str]],
                                       model: str,
-                                      max_tokens: int) -> str:
+                                      max_tokens: int,
+                                      n: int = 1) -> Union[str, List[str]]:
         """
         Generate a response using OpenAI API.
         
@@ -146,11 +154,12 @@ class LLMService:
             messages: List of messages in OpenAI format
             model: OpenAI model to use
             max_tokens: Maximum number of tokens to generate
+            n: Number of response candidates to generate
             
         Returns:
-            Generated response text
+            Generated response text or list of response texts if n > 1
         """
-        self.logger.info(f"Generating response with OpenAI model: {model}")
+        self.logger.info(f"Generating {n} response(s) with OpenAI model: {model}")
         start_time = time.time()
         
         headers = {
@@ -163,7 +172,8 @@ class LLMService:
             "messages": messages,
             "max_tokens": max_tokens,
             "temperature": 0.7,
-            "top_p": 1.0
+            "top_p": 1.0,
+            "n": n
         }
         
         async with aiohttp.ClientSession() as session:
@@ -180,7 +190,15 @@ class LLMService:
                 result = await response.json()
                 api_time = time.time() - start_time
                 self.logger.info(f"OpenAI API request completed in {api_time:.2f} seconds")
-                return result["choices"][0]["message"]["content"]
+                
+                # n=1の場合は単一の文字列、n>1の場合はリストを返す
+                if n == 1:
+                    return result["choices"][0]["message"]["content"]
+                else:
+                    # 複数の応答候補を返す
+                    responses = [choice["message"]["content"] for choice in result["choices"]]
+                    self.logger.info(f"Generated {len(responses)} response candidates")
+                    return responses
                 
     async def _generate_anthropic_response(self, 
                                          prompt: str,

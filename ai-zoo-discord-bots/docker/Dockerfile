@@ -13,6 +13,11 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     cron \
     tzdata \
+    # 科学計算ライブラリ用依存関係
+    build-essential \
+    libssl-dev \
+    gcc \
+    g++ \
     # Playwright/Chromium dependencies
     libglib2.0-0 \
     libnss3 \
@@ -47,7 +52,8 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 COPY requirements.txt .
 
 # Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Install Playwright browser (Chromium) for headless browsing
 RUN playwright install chromium --with-deps
